@@ -53,9 +53,15 @@ router.post('/register', async (req, res) => {
       await prisma.lounge.create({
         data: {
           name: `${name}'s Lounge`,
-          ownerId: user.id,
-          universityId,
-          campusId,
+          owner: {
+            connect: { id: user.id }
+          },
+          university: {
+            connect: { id: universityId }
+          },
+          campus: {
+            connect: { id: campusId }
+          },
           description: `${name}'s lounge profile is pending setup`,
           accountNumber: null,
           bankName: null,

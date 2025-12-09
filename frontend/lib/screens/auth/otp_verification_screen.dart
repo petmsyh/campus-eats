@@ -165,6 +165,7 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
   }
 
   void _showError(String message) {
+    if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(message),
@@ -174,6 +175,7 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
   }
 
   void _showInfo(String message) {
+    if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(message),
@@ -183,6 +185,7 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
   }
 
   void _showSuccess(String message) {
+    if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(message),

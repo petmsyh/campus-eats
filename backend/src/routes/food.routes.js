@@ -9,18 +9,24 @@ const logger = require('../utils/logger');
 // @access  Public
 router.get('/', async (req, res) => {
   try {
-    const { loungeId, category, search, available } = req.query;
+    const { loungeId, category, search, available, campusId } = req.query;
 
     const where = {};
+    const loungeFilters = {};
     
     if (loungeId) where.loungeId = loungeId;
     if (category) where.category = category.toUpperCase();
     if (available !== undefined) where.isAvailable = available === 'true';
+    if (campusId) loungeFilters.campusId = campusId;
     if (search) {
       where.OR = [
         { name: { contains: search, mode: 'insensitive' } },
         { description: { contains: search, mode: 'insensitive' } }
       ];
+    }
+
+    if (Object.keys(loungeFilters).length > 0) {
+      where.lounge = loungeFilters;
     }
 
     const foods = await prisma.food.findMany({

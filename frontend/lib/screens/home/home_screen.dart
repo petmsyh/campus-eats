@@ -55,11 +55,16 @@ class _HomeScreenState extends State<HomeScreen> {
         queryParams: loungeQuery.isEmpty ? null : loungeQuery,
       );
 
+      final foodQuery = {
+        'available': 'true',
+      };
+      if (campusId != null) {
+        foodQuery['campusId'] = campusId;
+      }
+
       final foodsResponse = await widget.apiClient.get(
         '/foods',
-        queryParams: {
-          'available': 'true',
-        },
+        queryParams: foodQuery,
       );
 
         final loungeList = (loungeResponse['data'] as List?) ?? [];

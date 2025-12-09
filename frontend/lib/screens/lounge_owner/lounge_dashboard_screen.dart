@@ -4,6 +4,7 @@ import '../../services/lounge_service.dart';
 import 'orders_screen.dart';
 import 'menu_screen.dart';
 import 'commission_screen.dart';
+import 'qr_scanner_screen.dart';
 
 class LoungeDashboardScreen extends StatefulWidget {
   final LoungeService loungeService;
@@ -25,6 +26,7 @@ class _LoungeDashboardScreenState extends State<LoungeDashboardScreen> {
   Map<String, dynamic>? _loungeProfile;
   bool _isLoading = true;
   String? _errorMessage;
+  bool _isEditingProfile = false;
 
   @override
   void initState() {
@@ -43,9 +45,9 @@ class _LoungeDashboardScreenState extends State<LoungeDashboardScreen> {
       final preparing = orders.where((o) => o['status'] == 'PREPARING').length;
       final ready = orders.where((o) => o['status'] == 'READY').length;
       final delivered = orders.where((o) => o['status'] == 'DELIVERED').length;
-      
+
       double totalRevenue = 0;
-      for (var order in orders) {
+      for (final order in orders) {
         if (order['status'] == 'DELIVERED') {
           totalRevenue += (order['totalPrice'] ?? 0).toDouble();
         }
@@ -70,15 +72,14 @@ class _LoungeDashboardScreenState extends State<LoungeDashboardScreen> {
       });
     } catch (e) {
       setState(() => _isLoading = false);
-      if (mounted) {
-        setState(() => _errorMessage = e.toString());
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error loading stats: $e'),
-            backgroundColor: AppTheme.errorColor,
-          ),
-        );
-      }
+      if (!mounted) return;
+      setState(() => _errorMessage = e.toString());
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error loading stats: $e'),
+          backgroundColor: AppTheme.errorColor,
+        ),
+      );
     }
   }
 
@@ -118,6 +119,59 @@ class _LoungeDashboardScreenState extends State<LoungeDashboardScreen> {
     }
   }
 
+  Future<void> _openQRScanner() async {
+    final verified = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+        builder: (_) => QRScannerScreen(loungeService: widget.loungeService),
+      ),
+    );
+    if (verified == true && mounted) {
+      await _loadStats();
+    }
+  }
+
+  Future<void> _openEditProfileSheet() async {
+    if (_isEditingProfile) return;
+    final profile = _loungeProfile;
+    if (profile == null) return;
+
+    if (mounted) {
+      setState(() => _isEditingProfile = true);
+    } else {
+      _isEditingProfile = true;
+    }
+
+    try {
+      final result = await showModalBottomSheet<bool>(
+        context: context,
+        isScrollControlled: true,
+        builder: (_) => FractionallySizedBox(
+          heightFactor: 0.95,
+          child: _LoungeProfileEditSheet(
+            profile: Map<String, dynamic>.from(profile),
+            loungeService: widget.loungeService,
+            loungeId: widget.loungeId,
+          ),
+        ),
+      );
+
+      if (result == true) {
+        if (!mounted) return;
+        await _loadStats();
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Lounge profile updated successfully')),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isEditingProfile = false);
+      } else {
+        _isEditingProfile = false;
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -127,11 +181,7 @@ class _LoungeDashboardScreenState extends State<LoungeDashboardScreen> {
           IconButton(icon: const Icon(Icons.refresh), onPressed: _loadStats),
           IconButton(
             icon: const Icon(Icons.qr_code_scanner),
-            onPressed: () {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('QR Scanner coming soon')),
-              );
-            },
+            onPressed: _openQRScanner,
           ),
         ],
       ),
@@ -316,20 +366,24 @@ class _LoungeDashboardScreenState extends State<LoungeDashboardScreen> {
     }
 
     final profile = _loungeProfile!;
-    final bankAccount = (profile['bankAccount'] ?? const {}) as Map<String, dynamic>;
+    final bankAccountRaw = profile['bankAccount'];
+    final legacyBankAccount = bankAccountRaw is Map
+        ? Map<String, dynamic>.from(bankAccountRaw as Map)
+        : <String, dynamic>{};
     final bankAccounts = _asMapList(profile['bankAccounts']);
-    if (bankAccounts.isEmpty && bankAccount.isNotEmpty) {
-      bankAccounts.add(Map<String, dynamic>.from(bankAccount));
+    if (bankAccounts.isEmpty && legacyBankAccount.isNotEmpty) {
+      bankAccounts.add(Map<String, dynamic>.from(legacyBankAccount));
     }
     final wallets = _asMapList(profile['wallets']);
-    final operatingHours = (profile['operatingHours'] ?? const {}) as Map<String, dynamic>;
-    final university = profile['university'] == null
-      ? null
-      : Map<String, dynamic>.from(profile['university'] as Map);
-    final campus = profile['campus'] == null
-      ? null
-      : Map<String, dynamic>.from(profile['campus'] as Map);
-    final logoUrl = profile['logo'] as String?;
+    final operatingRaw = profile['operatingHours'];
+    final operatingHours = operatingRaw is Map
+        ? Map<String, dynamic>.from(operatingRaw as Map)
+        : <String, dynamic>{};
+    final universityData = profile['university'];
+    final university = universityData is Map ? Map<String, dynamic>.from(universityData as Map) : null;
+    final campusData = profile['campus'];
+    final campus = campusData is Map ? Map<String, dynamic>.from(campusData as Map) : null;
+    final logoUrl = profile['logo']?.toString();
 
     return RefreshIndicator(
       onRefresh: _loadStats,
@@ -406,7 +460,7 @@ class _LoungeDashboardScreenState extends State<LoungeDashboardScreen> {
                       icon: const Icon(Icons.edit),
                       label: const Text('Edit Profile'),
                     ),
-                  )
+                  ),
                 ],
               ),
             ),
@@ -415,16 +469,16 @@ class _LoungeDashboardScreenState extends State<LoungeDashboardScreen> {
           _buildInfoSection(
             title: 'Location',
             rows: [
-              _buildInfoRow('University', university?['name'] ?? 'N/A'),
-              _buildInfoRow('Campus', campus?['name'] ?? 'N/A'),
+              _buildInfoRow('University', university?['name']?.toString() ?? 'N/A'),
+              _buildInfoRow('Campus', campus?['name']?.toString() ?? 'N/A'),
             ],
           ),
           const SizedBox(height: 16),
           _buildInfoSection(
             title: 'Operating Hours',
             rows: [
-              _buildInfoRow('Opening', operatingHours['opening'] ?? '--'),
-              _buildInfoRow('Closing', operatingHours['closing'] ?? '--'),
+              _buildInfoRow('Opening', operatingHours['opening']?.toString() ?? '--'),
+              _buildInfoRow('Closing', operatingHours['closing']?.toString() ?? '--'),
             ],
           ),
           const SizedBox(height: 16),
@@ -547,408 +601,6 @@ class _LoungeDashboardScreenState extends State<LoungeDashboardScreen> {
           .toList();
     }
     return [];
-  }
-
-  Future<void> _openEditProfileSheet() async {
-    final profile = _loungeProfile;
-    if (profile == null) return;
-
-    final legacyBankAccount = (profile['bankAccount'] ?? const {}) as Map<String, dynamic>;
-    final operatingHours = (profile['operatingHours'] ?? const {}) as Map<String, dynamic>;
-
-    final existingBankAccounts = _asMapList(profile['bankAccounts']);
-    if (existingBankAccounts.isEmpty && legacyBankAccount.isNotEmpty) {
-      existingBankAccounts.add(Map<String, dynamic>.from(legacyBankAccount));
-    }
-    final existingWallets = _asMapList(profile['wallets']);
-
-    final nameController = TextEditingController(text: profile['name'] ?? '');
-    final descriptionController = TextEditingController(text: profile['description'] ?? '');
-    final logoController = TextEditingController(text: profile['logo'] ?? '');
-    final openingController = TextEditingController(text: operatingHours['opening'] ?? '');
-    final closingController = TextEditingController(text: operatingHours['closing'] ?? '');
-
-    final bankAccountFields = existingBankAccounts.isEmpty
-        ? [_BankAccountFieldSet()]
-        : existingBankAccounts
-            .map((account) => _BankAccountFieldSet(
-                  accountHolderName: account['accountHolderName']?.toString(),
-                  bankName: account['bankName']?.toString(),
-                  accountNumber: account['accountNumber']?.toString(),
-                ))
-            .toList();
-
-    final walletFields = existingWallets.isEmpty
-        ? [_WalletFieldSet()]
-        : existingWallets
-            .map((wallet) => _WalletFieldSet(
-                  provider: wallet['provider']?.toString(),
-                  phoneNumber: (wallet['phoneNumber'] ?? wallet['accountNumber'])?.toString(),
-                  accountHolderName: wallet['accountHolderName']?.toString(),
-                  walletId: wallet['accountNumber']?.toString(),
-                  instructions: wallet['instructions']?.toString(),
-                ))
-            .toList();
-
-    final formKey = GlobalKey<FormState>();
-    bool isSaving = false;
-
-    final result = await showModalBottomSheet<bool>(
-      context: context,
-      isScrollControlled: true,
-      builder: (sheetContext) {
-        return FractionallySizedBox(
-          heightFactor: 0.95,
-          child: Padding(
-            padding: EdgeInsets.only(
-              left: 16,
-              right: 16,
-              bottom: MediaQuery.of(sheetContext).viewInsets.bottom + 16,
-              top: 24,
-            ),
-            child: StatefulBuilder(
-              builder: (context, setModalState) {
-                return SafeArea(
-                  child: SingleChildScrollView(
-                    child: Form(
-                      key: formKey,
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              Text('Edit Lounge Profile', style: AppTheme.heading3),
-                              IconButton(
-                                icon: const Icon(Icons.close),
-                                onPressed: () => Navigator.of(sheetContext).pop(),
-                              )
-                            ],
-                          ),
-                          const SizedBox(height: 16),
-                          TextFormField(
-                            controller: nameController,
-                            decoration: const InputDecoration(
-                              labelText: 'Lounge Name',
-                              prefixIcon: Icon(Icons.store),
-                            ),
-                            validator: (value) =>
-                                value == null || value.trim().isEmpty ? 'Name is required' : null,
-                          ),
-                          const SizedBox(height: 12),
-                          TextFormField(
-                            controller: descriptionController,
-                            decoration: const InputDecoration(
-                              labelText: 'Description',
-                              prefixIcon: Icon(Icons.description_outlined),
-                            ),
-                            minLines: 2,
-                            maxLines: 4,
-                          ),
-                          const SizedBox(height: 12),
-                          TextFormField(
-                            controller: logoController,
-                            decoration: const InputDecoration(
-                              labelText: 'Logo URL',
-                              prefixIcon: Icon(Icons.image_outlined),
-                              helperText: 'Provide a publicly accessible image URL',
-                            ),
-                          ),
-                          const SizedBox(height: 12),
-                          Row(
-                            children: [
-                              Expanded(
-                                child: TextFormField(
-                                  controller: openingController,
-                                  decoration: const InputDecoration(
-                                    labelText: 'Opening Time',
-                                    prefixIcon: Icon(Icons.access_time),
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: TextFormField(
-                                  controller: closingController,
-                                  decoration: const InputDecoration(
-                                    labelText: 'Closing Time',
-                                    prefixIcon: Icon(Icons.access_time_filled),
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 20),
-                          Text('Bank Accounts', style: AppTheme.heading3),
-                          const SizedBox(height: 8),
-                          ...bankAccountFields.asMap().entries.map((entry) {
-                            final index = entry.key;
-                            final fieldSet = entry.value;
-                            return Card(
-                              key: ValueKey(fieldSet.id),
-                              margin: const EdgeInsets.only(bottom: 12),
-                              child: Padding(
-                                padding: const EdgeInsets.all(12),
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Row(
-                                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                      children: [
-                                        Text(
-                                          'Account ${index + 1}',
-                                          style: AppTheme.bodyLarge.copyWith(fontWeight: FontWeight.w600),
-                                        ),
-                                        if (bankAccountFields.length > 1)
-                                          IconButton(
-                                            icon: const Icon(Icons.delete_outline, color: AppTheme.errorColor),
-                                            onPressed: () {
-                                              setModalState(() {
-                                                final removed = bankAccountFields.removeAt(index);
-                                                WidgetsBinding.instance.addPostFrameCallback((_) {
-                                                  removed.dispose();
-                                                });
-                                              });
-                                            },
-                                          ),
-                                      ],
-                                    ),
-                                    const SizedBox(height: 8),
-                                    TextFormField(
-                                      controller: fieldSet.accountHolderController,
-                                      decoration: const InputDecoration(
-                                        labelText: 'Account Holder Name',
-                                        prefixIcon: Icon(Icons.person_outline),
-                                      ),
-                                    ),
-                                    const SizedBox(height: 12),
-                                    TextFormField(
-                                      controller: fieldSet.bankNameController,
-                                      decoration: const InputDecoration(
-                                        labelText: 'Bank Name',
-                                        prefixIcon: Icon(Icons.account_balance),
-                                      ),
-                                    ),
-                                    const SizedBox(height: 12),
-                                    TextFormField(
-                                      controller: fieldSet.accountNumberController,
-                                      decoration: const InputDecoration(
-                                        labelText: 'Account Number',
-                                        prefixIcon: Icon(Icons.numbers),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            );
-                          }),
-                          Align(
-                            alignment: Alignment.centerLeft,
-                            child: OutlinedButton.icon(
-                              onPressed: () {
-                                setModalState(() {
-                                  bankAccountFields.add(_BankAccountFieldSet());
-                                });
-                              },
-                              icon: const Icon(Icons.add),
-                              label: const Text('Add Bank Account'),
-                            ),
-                          ),
-                          const SizedBox(height: 20),
-                          Text('Wallets & Mobile Money', style: AppTheme.heading3),
-                          const SizedBox(height: 8),
-                          ...walletFields.asMap().entries.map((entry) {
-                            final index = entry.key;
-                            final fieldSet = entry.value;
-                            return Card(
-                              key: ValueKey(fieldSet.id),
-                              margin: const EdgeInsets.only(bottom: 12),
-                              child: Padding(
-                                padding: const EdgeInsets.all(12),
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Row(
-                                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                      children: [
-                                        Text(
-                                          'Wallet ${index + 1}',
-                                          style: AppTheme.bodyLarge.copyWith(fontWeight: FontWeight.w600),
-                                        ),
-                                        if (walletFields.length > 1)
-                                          IconButton(
-                                            icon: const Icon(Icons.delete_outline, color: AppTheme.errorColor),
-                                            onPressed: () {
-                                              setModalState(() {
-                                                final removed = walletFields.removeAt(index);
-                                                WidgetsBinding.instance.addPostFrameCallback((_) {
-                                                  removed.dispose();
-                                                });
-                                              });
-                                            },
-                                          ),
-                                      ],
-                                    ),
-                                    const SizedBox(height: 8),
-                                    TextFormField(
-                                      controller: fieldSet.providerController,
-                                      decoration: const InputDecoration(
-                                        labelText: 'Provider (e.g., Telebirr)',
-                                        prefixIcon: Icon(Icons.account_balance_wallet_outlined),
-                                      ),
-                                    ),
-                                    const SizedBox(height: 12),
-                                    TextFormField(
-                                      controller: fieldSet.phoneController,
-                                      decoration: const InputDecoration(
-                                        labelText: 'Phone Number',
-                                        prefixIcon: Icon(Icons.phone_iphone),
-                                      ),
-                                    ),
-                                    const SizedBox(height: 12),
-                                    TextFormField(
-                                      controller: fieldSet.walletIdController,
-                                      decoration: const InputDecoration(
-                                        labelText: 'Wallet / Account ID (optional)',
-                                        prefixIcon: Icon(Icons.confirmation_number_outlined),
-                                      ),
-                                    ),
-                                    const SizedBox(height: 12),
-                                    TextFormField(
-                                      controller: fieldSet.accountHolderController,
-                                      decoration: const InputDecoration(
-                                        labelText: 'Account Holder Name',
-                                        prefixIcon: Icon(Icons.person_outline),
-                                      ),
-                                    ),
-                                    const SizedBox(height: 12),
-                                    TextFormField(
-                                      controller: fieldSet.instructionsController,
-                                      decoration: const InputDecoration(
-                                        labelText: 'Payment Instructions',
-                                        prefixIcon: Icon(Icons.notes_outlined),
-                                      ),
-                                      maxLines: 2,
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            );
-                          }),
-                          Align(
-                            alignment: Alignment.centerLeft,
-                            child: OutlinedButton.icon(
-                              onPressed: () {
-                                setModalState(() {
-                                  walletFields.add(_WalletFieldSet());
-                                });
-                              },
-                              icon: const Icon(Icons.add_circle_outline),
-                              label: const Text('Add Wallet'),
-                            ),
-                          ),
-                          const SizedBox(height: 24),
-                          SizedBox(
-                            width: double.infinity,
-                            child: ElevatedButton.icon(
-                              icon: isSaving
-                                  ? const SizedBox(
-                                      width: 18,
-                                      height: 18,
-                                      child: CircularProgressIndicator(
-                                        strokeWidth: 2,
-                                        color: Colors.white,
-                                      ),
-                                    )
-                                  : const Icon(Icons.save),
-                              label: Text(isSaving ? 'Saving...' : 'Save Changes'),
-                              onPressed: isSaving
-                                  ? null
-                                  : () async {
-                                      if (!formKey.currentState!.validate()) return;
-                                      setModalState(() => isSaving = true);
-
-                                      final name = nameController.text.trim();
-                                      final description = descriptionController.text.trim();
-                                      final logo = logoController.text.trim();
-                                      final opening = openingController.text.trim();
-                                      final closing = closingController.text.trim();
-
-                                      final bankPayloads = bankAccountFields
-                                          .map((field) => field.buildPayload())
-                                          .whereType<Map<String, String>>()
-                                          .toList();
-                                      final walletPayloads = walletFields
-                                          .map((field) => field.buildPayload())
-                                          .whereType<Map<String, String>>()
-                                          .toList();
-                                      final bankPayload = bankPayloads.isNotEmpty ? bankPayloads.first : null;
-                                      final bankAccountsPayload = bankPayloads.isNotEmpty ? bankPayloads : null;
-                                      final walletsPayload = walletPayloads.isNotEmpty ? walletPayloads : null;
-
-                                      final operatingPayload = <String, String>{};
-                                      if (opening.isNotEmpty) operatingPayload['opening'] = opening;
-                                      if (closing.isNotEmpty) operatingPayload['closing'] = closing;
-
-                                      try {
-                                        await widget.loungeService.updateLounge(
-                                          loungeId: widget.loungeId,
-                                          name: name,
-                                          description: description.isEmpty ? null : description,
-                                          logo: logo.isEmpty ? null : logo,
-                                          bankAccount: bankPayload,
-                                          bankAccounts: bankAccountsPayload,
-                                          wallets: walletsPayload,
-                                          operatingHours: operatingPayload.isEmpty ? null : operatingPayload,
-                                        );
-
-                                        if (!mounted) return;
-                                        Navigator.of(sheetContext).pop(true);
-                                      } catch (error) {
-                                        setModalState(() => isSaving = false);
-                                        ScaffoldMessenger.of(sheetContext).showSnackBar(
-                                          SnackBar(
-                                            content: Text('Failed to update lounge: $error'),
-                                            backgroundColor: AppTheme.errorColor,
-                                          ),
-                                        );
-                                      }
-                                    },
-                            ),
-                          ),
-                          const SizedBox(height: 12),
-                        ],
-                      ),
-                    ),
-                  ),
-                );
-              },
-            ),
-          ),
-        );
-      },
-    );
-
-    nameController.dispose();
-    descriptionController.dispose();
-    logoController.dispose();
-    openingController.dispose();
-    closingController.dispose();
-    for (final field in bankAccountFields) {
-      field.dispose();
-    }
-    for (final field in walletFields) {
-      field.dispose();
-    }
-
-    if (result == true) {
-      if (!mounted) return;
-      await _loadStats();
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Lounge profile updated successfully')),
-      );
-    }
   }
 
   Widget _buildInfoRow(String label, String value) {
@@ -1101,6 +753,426 @@ class _LoungeDashboardScreenState extends State<LoungeDashboardScreen> {
         Text(label, style: AppTheme.bodyLarge.copyWith(color: Colors.white70)),
         Text(value, style: AppTheme.heading3.copyWith(color: Colors.white, fontWeight: FontWeight.bold)),
       ],
+    );
+  }
+}
+
+class _LoungeProfileEditSheet extends StatefulWidget {
+  const _LoungeProfileEditSheet({
+    required this.profile,
+    required this.loungeService,
+    required this.loungeId,
+  });
+
+  final Map<String, dynamic> profile;
+  final LoungeService loungeService;
+  final String loungeId;
+
+  @override
+  State<_LoungeProfileEditSheet> createState() => _LoungeProfileEditSheetState();
+}
+
+class _LoungeProfileEditSheetState extends State<_LoungeProfileEditSheet> {
+  final _formKey = GlobalKey<FormState>();
+  late TextEditingController _nameController;
+  late TextEditingController _descriptionController;
+  late TextEditingController _logoController;
+  late TextEditingController _openingController;
+  late TextEditingController _closingController;
+  late List<_BankAccountFieldSet> _bankAccountFields;
+  late List<_WalletFieldSet> _walletFields;
+  bool _isSaving = false;
+
+  @override
+  void initState() {
+    super.initState();
+    final profile = widget.profile;
+    final bankAccountRaw = profile['bankAccount'];
+    final legacyBankAccount = bankAccountRaw is Map
+        ? Map<String, dynamic>.from(bankAccountRaw as Map)
+        : <String, dynamic>{};
+    final operatingRaw = profile['operatingHours'];
+    final operatingHours = operatingRaw is Map
+        ? Map<String, dynamic>.from(operatingRaw as Map)
+        : <String, dynamic>{};
+
+    final existingBankAccounts = _asMapList(profile['bankAccounts']);
+    if (existingBankAccounts.isEmpty && legacyBankAccount.isNotEmpty) {
+      existingBankAccounts.add(Map<String, dynamic>.from(legacyBankAccount));
+    }
+    final existingWallets = _asMapList(profile['wallets']);
+
+    _nameController = TextEditingController(text: profile['name']?.toString() ?? '');
+    _descriptionController = TextEditingController(text: profile['description']?.toString() ?? '');
+    _logoController = TextEditingController(text: profile['logo']?.toString() ?? '');
+    _openingController = TextEditingController(text: operatingHours['opening']?.toString() ?? '');
+    _closingController = TextEditingController(text: operatingHours['closing']?.toString() ?? '');
+
+    _bankAccountFields = existingBankAccounts.isEmpty
+        ? [_BankAccountFieldSet()]
+        : existingBankAccounts
+            .map(
+              (account) => _BankAccountFieldSet(
+                accountHolderName: account['accountHolderName']?.toString(),
+                bankName: account['bankName']?.toString(),
+                accountNumber: account['accountNumber']?.toString(),
+              ),
+            )
+            .toList();
+
+    _walletFields = existingWallets.isEmpty
+        ? [_WalletFieldSet()]
+        : existingWallets
+            .map(
+              (wallet) => _WalletFieldSet(
+                provider: wallet['provider']?.toString(),
+                phoneNumber: (wallet['phoneNumber'] ?? wallet['accountNumber'])?.toString(),
+                accountHolderName: wallet['accountHolderName']?.toString(),
+                walletId: wallet['accountNumber']?.toString(),
+                instructions: wallet['instructions']?.toString(),
+              ),
+            )
+            .toList();
+  }
+
+  static List<Map<String, dynamic>> _asMapList(dynamic source) {
+    if (source is List) {
+      return source
+          .where((element) => element is Map)
+          .map((element) => Map<String, dynamic>.from(element as Map))
+          .toList();
+    }
+    return [];
+  }
+
+  @override
+  void dispose() {
+    _nameController.dispose();
+    _descriptionController.dispose();
+    _logoController.dispose();
+    _openingController.dispose();
+    _closingController.dispose();
+    for (final field in _bankAccountFields) {
+      field.dispose();
+    }
+    for (final field in _walletFields) {
+      field.dispose();
+    }
+    super.dispose();
+  }
+
+  Future<void> _handleSave() async {
+    if (!_formKey.currentState!.validate()) return;
+    setState(() => _isSaving = true);
+
+    final name = _nameController.text.trim();
+    final description = _descriptionController.text.trim();
+    final logo = _logoController.text.trim();
+    final opening = _openingController.text.trim();
+    final closing = _closingController.text.trim();
+
+    final bankPayloads = _bankAccountFields
+        .map((field) => field.buildPayload())
+        .whereType<Map<String, String>>()
+        .toList();
+    final walletPayloads = _walletFields
+        .map((field) => field.buildPayload())
+        .whereType<Map<String, String>>()
+        .toList();
+    final bankPayload = bankPayloads.isNotEmpty ? bankPayloads.first : null;
+    final bankAccountsPayload = bankPayloads.isNotEmpty ? bankPayloads : null;
+    final walletsPayload = walletPayloads.isNotEmpty ? walletPayloads : null;
+
+    final operatingPayload = <String, String>{};
+    if (opening.isNotEmpty) operatingPayload['opening'] = opening;
+    if (closing.isNotEmpty) operatingPayload['closing'] = closing;
+
+    try {
+      await widget.loungeService.updateLounge(
+        loungeId: widget.loungeId,
+        name: name,
+        description: description.isEmpty ? null : description,
+        logo: logo.isEmpty ? null : logo,
+        bankAccount: bankPayload,
+        bankAccounts: bankAccountsPayload,
+        wallets: walletsPayload,
+        operatingHours: operatingPayload.isEmpty ? null : operatingPayload,
+      );
+
+      if (!mounted) return;
+      Navigator.of(context).pop(true);
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => _isSaving = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Failed to update lounge: $error'),
+          backgroundColor: AppTheme.errorColor,
+        ),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedPadding(
+      duration: const Duration(milliseconds: 200),
+      curve: Curves.easeOut,
+      padding: EdgeInsets.only(
+        left: 16,
+        right: 16,
+        bottom: MediaQuery.of(context).viewInsets.bottom + 16,
+        top: 24,
+      ),
+      child: SafeArea(
+        child: SingleChildScrollView(
+          child: Form(
+            key: _formKey,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text('Edit Lounge Profile', style: AppTheme.heading3),
+                    IconButton(
+                      icon: const Icon(Icons.close),
+                      onPressed: () => Navigator.of(context).pop(false),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                TextFormField(
+                  controller: _nameController,
+                  decoration: const InputDecoration(
+                    labelText: 'Lounge Name',
+                    prefixIcon: Icon(Icons.store),
+                  ),
+                  validator: (value) => value == null || value.trim().isEmpty ? 'Name is required' : null,
+                ),
+                const SizedBox(height: 12),
+                TextFormField(
+                  controller: _descriptionController,
+                  decoration: const InputDecoration(
+                    labelText: 'Description',
+                    prefixIcon: Icon(Icons.description_outlined),
+                  ),
+                  minLines: 2,
+                  maxLines: 4,
+                ),
+                const SizedBox(height: 12),
+                TextFormField(
+                  controller: _logoController,
+                  decoration: const InputDecoration(
+                    labelText: 'Logo URL',
+                    prefixIcon: Icon(Icons.image_outlined),
+                    helperText: 'Provide a publicly accessible image URL',
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextFormField(
+                        controller: _openingController,
+                        decoration: const InputDecoration(
+                          labelText: 'Opening Time',
+                          prefixIcon: Icon(Icons.access_time),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: TextFormField(
+                        controller: _closingController,
+                        decoration: const InputDecoration(
+                          labelText: 'Closing Time',
+                          prefixIcon: Icon(Icons.access_time_filled),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 20),
+                Text('Bank Accounts', style: AppTheme.heading3),
+                const SizedBox(height: 8),
+                ..._bankAccountFields.asMap().entries.map((entry) {
+                  final index = entry.key;
+                  final fieldSet = entry.value;
+                  return Card(
+                    key: ValueKey(fieldSet.id),
+                    margin: const EdgeInsets.only(bottom: 12),
+                    child: Padding(
+                      padding: const EdgeInsets.all(12),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text('Account ${index + 1}', style: AppTheme.bodyLarge.copyWith(fontWeight: FontWeight.w600)),
+                              if (_bankAccountFields.length > 1)
+                                IconButton(
+                                  icon: const Icon(Icons.delete_outline, color: AppTheme.errorColor),
+                                  onPressed: () {
+                                    setState(() {
+                                      final removed = _bankAccountFields.removeAt(index);
+                                      removed.dispose();
+                                    });
+                                  },
+                                ),
+                            ],
+                          ),
+                          const SizedBox(height: 8),
+                          TextFormField(
+                            controller: fieldSet.accountHolderController,
+                            decoration: const InputDecoration(
+                              labelText: 'Account Holder Name',
+                              prefixIcon: Icon(Icons.person_outline),
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          TextFormField(
+                            controller: fieldSet.bankNameController,
+                            decoration: const InputDecoration(
+                              labelText: 'Bank Name',
+                              prefixIcon: Icon(Icons.account_balance),
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          TextFormField(
+                            controller: fieldSet.accountNumberController,
+                            decoration: const InputDecoration(
+                              labelText: 'Account Number',
+                              prefixIcon: Icon(Icons.numbers),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                }),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: OutlinedButton.icon(
+                    onPressed: () {
+                      setState(() {
+                        _bankAccountFields.add(_BankAccountFieldSet());
+                      });
+                    },
+                    icon: const Icon(Icons.add_circle_outline),
+                    label: const Text('Add Bank Account'),
+                  ),
+                ),
+                const SizedBox(height: 20),
+                Text('Wallets & Mobile Money', style: AppTheme.heading3),
+                const SizedBox(height: 8),
+                ..._walletFields.asMap().entries.map((entry) {
+                  final index = entry.key;
+                  final fieldSet = entry.value;
+                  return Card(
+                    key: ValueKey(fieldSet.id),
+                    margin: const EdgeInsets.only(bottom: 12),
+                    child: Padding(
+                      padding: const EdgeInsets.all(12),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text('Wallet ${index + 1}', style: AppTheme.bodyLarge.copyWith(fontWeight: FontWeight.w600)),
+                              if (_walletFields.length > 1)
+                                IconButton(
+                                  icon: const Icon(Icons.delete_outline, color: AppTheme.errorColor),
+                                  onPressed: () {
+                                    setState(() {
+                                      final removed = _walletFields.removeAt(index);
+                                      removed.dispose();
+                                    });
+                                  },
+                                ),
+                            ],
+                          ),
+                          const SizedBox(height: 8),
+                          TextFormField(
+                            controller: fieldSet.providerController,
+                            decoration: const InputDecoration(
+                              labelText: 'Provider (e.g., Telebirr)',
+                              prefixIcon: Icon(Icons.account_balance_wallet_outlined),
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          TextFormField(
+                            controller: fieldSet.phoneController,
+                            decoration: const InputDecoration(
+                              labelText: 'Phone Number',
+                              prefixIcon: Icon(Icons.phone_iphone),
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          TextFormField(
+                            controller: fieldSet.walletIdController,
+                            decoration: const InputDecoration(
+                              labelText: 'Wallet / Account ID (optional)',
+                              prefixIcon: Icon(Icons.confirmation_number_outlined),
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          TextFormField(
+                            controller: fieldSet.accountHolderController,
+                            decoration: const InputDecoration(
+                              labelText: 'Account Holder Name',
+                              prefixIcon: Icon(Icons.person_outline),
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          TextFormField(
+                            controller: fieldSet.instructionsController,
+                            decoration: const InputDecoration(
+                              labelText: 'Payment Instructions',
+                              prefixIcon: Icon(Icons.notes_outlined),
+                            ),
+                            maxLines: 2,
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                }),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: OutlinedButton.icon(
+                    onPressed: () {
+                      setState(() {
+                        _walletFields.add(_WalletFieldSet());
+                      });
+                    },
+                    icon: const Icon(Icons.add_circle_outline),
+                    label: const Text('Add Wallet'),
+                  ),
+                ),
+                const SizedBox(height: 24),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton.icon(
+                    icon: _isSaving
+                        ? const SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                          )
+                        : const Icon(Icons.save),
+                    label: Text(_isSaving ? 'Saving...' : 'Save Changes'),
+                    onPressed: _isSaving ? null : _handleSave,
+                  ),
+                ),
+                const SizedBox(height: 12),
+              ],
+            ),
+          ),
+        ),
+      ),
     );
   }
 }

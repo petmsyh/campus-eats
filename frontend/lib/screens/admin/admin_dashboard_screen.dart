@@ -33,11 +33,13 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     try {
       setState(() => _isLoading = true);
       final stats = await widget.adminService.getStats();
+      if (!mounted) return;
       setState(() {
         _stats = stats;
         _isLoading = false;
       });
     } catch (e) {
+      if (!mounted) return;
       setState(() => _isLoading = false);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -56,6 +58,13 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     });
   }
 
+  void _handleLogout() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      Navigator.of(context).pushNamedAndRemoveUntil('/login', (route) => false);
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -68,9 +77,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
           ),
           IconButton(
             icon: const Icon(Icons.logout),
-            onPressed: () {
-              Navigator.of(context).pushReplacementNamed('/login');
-            },
+            onPressed: _handleLogout,
           ),
         ],
       ),
@@ -152,6 +159,35 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
         ),
       ),
       body: _buildBody(),
+      bottomNavigationBar: BottomNavigationBar(
+        currentIndex: _selectedIndex,
+        selectedItemColor: AppTheme.primaryColor,
+        unselectedItemColor: AppTheme.textSecondary,
+        type: BottomNavigationBarType.fixed,
+        onTap: _onItemTapped,
+        items: const [
+          BottomNavigationBarItem(
+            icon: Icon(Icons.dashboard),
+            label: 'Dashboard',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.people),
+            label: 'Users',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.restaurant),
+            label: 'Lounges',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.school),
+            label: 'Universities',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.receipt_long),
+            label: 'Orders',
+          ),
+        ],
+      ),
     );
   }
 
@@ -227,7 +263,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
       physics: const NeverScrollableScrollPhysics(),
       crossAxisSpacing: 16,
       mainAxisSpacing: 16,
-      childAspectRatio: 1.5,
+      childAspectRatio: 0.9,
       children: [
         _buildStatCard(
           'Users',
