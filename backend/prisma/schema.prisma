@@ -1,0 +1,336 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model University {
+  id        String    @id @default(uuid())
+  name      String    @unique
+  code      String    @unique
+  city      String?
+  region    String?
+  country   String    @default("Ethiopia")
+  isActive  Boolean   @default(true)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  campuses  Campus[]
+  users     User[]
+  lounges   Lounge[]
+
+  @@map("universities")
+}
+
+model Campus {
+  id           String    @id @default(uuid())
+  name         String
+  universityId String
+  address      String?
+  latitude     Float?
+  longitude    Float?
+  isActive     Boolean   @default(true)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  university   University @relation(fields: [universityId], references: [id], onDelete: Cascade)
+  users        User[]
+  lounges      Lounge[]
+
+  @@unique([name, universityId])
+  @@map("campuses")
+}
+
+model User {
+  id           String    @id @default(uuid())
+  name         String
+  phone        String    @unique
+  email        String?
+  password     String
+  role         Role      @default(USER)
+  universityId String
+  campusId     String
+  walletBalance Float    @default(0)
+  isActive     Boolean   @default(true)
+  isVerified   Boolean   @default(false)
+  otpCode      String?
+  otpExpiresAt DateTime?
+  fcmToken     String?
+  lastLogin    DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  university   University  @relation(fields: [universityId], references: [id], onDelete: Cascade)
+  campus       Campus      @relation(fields: [campusId], references: [id], onDelete: Cascade)
+  lounges      Lounge[]
+  orders       Order[]
+  contracts    Contract[]
+  payments     Payment[]
+
+  @@map("users")
+}
+
+model Lounge {
+  id                String   @id @default(uuid())
+  name              String
+  ownerId           String
+  universityId      String
+  campusId          String
+  description       String?
+  logo              String?
+  accountNumber     String?
+  bankName          String?
+  accountHolderName String?
+  bankAccounts      Json?
+  wallets           Json?
+  opening           String?
+  closing           String?
+  isApproved        Boolean  @default(false)
+  isActive          Boolean  @default(true)
+  ratingAverage     Float    @default(0)
+  ratingCount       Int      @default(0)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  owner        User         @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  university   University   @relation(fields: [universityId], references: [id], onDelete: Cascade)
+  campus       Campus       @relation(fields: [campusId], references: [id], onDelete: Cascade)
+  foods        Food[]
+  orders       Order[]
+  contracts    Contract[]
+  commissions  Commission[]
+
+  @@index([universityId, campusId, isActive, isApproved])
+  @@map("lounges")
+}
+
+model Food {
+  id             String    @id @default(uuid())
+  loungeId       String
+  name           String
+  description    String?
+  category       FoodCategory
+  price          Float
+  image          String?
+  estimatedTime  Int
+  isAvailable    Boolean   @default(true)
+  ingredients    String[]
+  allergens      String[]
+  isVegetarian   Boolean   @default(false)
+  spicyLevel     SpicyLevel @default(NONE)
+  ratingAverage  Float     @default(0)
+  ratingCount    Int       @default(0)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  lounge         Lounge    @relation(fields: [loungeId], references: [id], onDelete: Cascade)
+  orderItems     OrderItem[]
+
+  @@index([loungeId, isAvailable])
+  @@index([category, isAvailable])
+  @@map("foods")
+}
+
+model Order {
+  id                 String        @id @default(uuid())
+  userId             String
+  loungeId           String
+  totalPrice         Float
+  status             OrderStatus   @default(PENDING)
+  paymentMethod      PaymentMethod
+  paymentId          String?
+  contractId         String?
+  qrCode             String?       @unique
+  qrCodeImage        String?
+  estimatedReadyTime DateTime?
+  deliveredAt        DateTime?
+  commission         Float         @default(0)
+  notes              String?
+  cancellationReason String?
+  createdAt          DateTime      @default(now())
+  updatedAt          DateTime      @updatedAt
+
+  user               User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  lounge             Lounge        @relation(fields: [loungeId], references: [id], onDelete: Cascade)
+  payment            Payment?      @relation(fields: [paymentId], references: [id])
+  contract           Contract?     @relation(fields: [contractId], references: [id])
+  items              OrderItem[]
+  commissions        Commission[]
+
+  @@index([userId, status])
+  @@index([loungeId, status])
+  @@index([qrCode])
+  @@index([createdAt])
+  @@map("orders")
+}
+
+model OrderItem {
+  id            String   @id @default(uuid())
+  orderId       String
+  foodId        String
+  name          String
+  quantity      Int
+  price         Float
+  subtotal      Float
+  estimatedTime Int?
+
+  order         Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  food          Food     @relation(fields: [foodId], references: [id])
+
+  @@map("order_items")
+}
+
+model Contract {
+  id               String   @id @default(uuid())
+  userId           String
+  loungeId         String
+  totalAmount      Float
+  remainingBalance Float
+  startDate        DateTime @default(now())
+  expiresAt        DateTime
+  isExpired        Boolean  @default(false)
+  isActive         Boolean  @default(true)
+  paymentId        String?
+  renewalCount     Int      @default(0)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  lounge           Lounge   @relation(fields: [loungeId], references: [id], onDelete: Cascade)
+  payment          Payment? @relation(fields: [paymentId], references: [id])
+  orders           Order[]
+
+  @@index([userId, loungeId, isActive])
+  @@index([expiresAt, isExpired])
+  @@map("contracts")
+}
+
+model Payment {
+  id                  String        @id @default(uuid())
+  userId              String
+  amount              Float
+  type                PaymentType
+  method              String
+  status              PaymentStatus @default(PENDING)
+  orderId             String?
+  contractId          String?
+  commission          Float         @default(0)
+  chapaReference      String?       @unique
+  chapaTransactionId  String?
+  metadata            Json?
+  createdAt           DateTime      @default(now())
+  updatedAt           DateTime      @updatedAt
+
+  user                User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  orders              Order[]
+  contracts           Contract[]
+
+  @@index([userId, status])
+  @@index([chapaReference])
+  @@index([createdAt])
+  @@map("payments")
+}
+
+model Commission {
+  id          String            @id @default(uuid())
+  orderId     String
+  loungeId    String
+  amount      Float
+  rate        Float
+  orderAmount Float
+  recipient   CommissionRecipient @default(SYSTEM)
+  status      CommissionStatus   @default(PENDING)
+  paidAt      DateTime?
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+
+  order       Order             @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  lounge      Lounge            @relation(fields: [loungeId], references: [id], onDelete: Cascade)
+
+  @@index([loungeId, status])
+  @@index([createdAt])
+  @@map("commissions")
+}
+
+enum Role {
+  USER
+  LOUNGE
+  ADMIN
+
+  @@map("role")
+}
+
+enum FoodCategory {
+  BREAKFAST
+  LUNCH
+  DINNER
+  SNACKS
+  DRINKS
+  DESSERT
+
+  @@map("food_category")
+}
+
+enum SpicyLevel {
+  NONE
+  MILD
+  MEDIUM
+  HOT
+  VERY_HOT
+
+  @@map("spicy_level")
+}
+
+enum OrderStatus {
+  PENDING
+  PREPARING
+  READY
+  DELIVERED
+  CANCELLED
+
+  @@map("order_status")
+}
+
+enum PaymentMethod {
+  CONTRACT
+  CHAPA
+
+  @@map("payment_method")
+}
+
+enum PaymentType {
+  ORDER
+  CONTRACT
+  REFUND
+
+  @@map("payment_type")
+}
+
+enum PaymentStatus {
+  PENDING
+  COMPLETED
+  FAILED
+  REFUNDED
+
+  @@map("payment_status")
+}
+
+enum CommissionRecipient {
+  SYSTEM
+  LOUNGE
+
+  @@map("commission_recipient")
+}
+
+enum CommissionStatus {
+  PENDING
+  PAID
+  CANCELLED
+
+  @@map("commission_status")
+}

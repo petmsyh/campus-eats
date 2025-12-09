@@ -1,0 +1,53 @@
+version: '3.8'
+
+services:
+  # MongoDB Database
+  mongodb:
+    image: mongo:7.0
+    container_name: campus_eats_mongodb
+    restart: unless-stopped
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: admin
+      MONGO_INITDB_ROOT_PASSWORD: password123
+      MONGO_INITDB_DATABASE: campus_eats
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodb_data:/data/db
+    networks:
+      - campus_eats_network
+
+  # Backend API
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: campus_eats_backend
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      MONGODB_URI: mongodb://admin:password123@mongodb:27017/campus_eats?authSource=admin
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_EXPIRES_IN: 7d
+      CHAPA_SECRET_KEY: ${CHAPA_SECRET_KEY}
+      CHAPA_PUBLIC_KEY: ${CHAPA_PUBLIC_KEY}
+      SYSTEM_COMMISSION_RATE: 0.05
+      FCM_SERVER_KEY: ${FCM_SERVER_KEY}
+      FCM_PROJECT_ID: ${FCM_PROJECT_ID}
+    depends_on:
+      - mongodb
+    networks:
+      - campus_eats_network
+    volumes:
+      - ./backend/logs:/app/logs
+
+volumes:
+  mongodb_data:
+    driver: local
+
+networks:
+  campus_eats_network:
+    driver: bridge
