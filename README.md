@@ -25,7 +25,7 @@ Campus Eats is a comprehensive food ordering and lounge management system design
 
 The system consists of three main components:
 
-1. **Backend API** (Node.js + Express + MongoDB)
+1. **Backend API** (Node.js + Express + Postgress)
    - RESTful API server
    - Authentication & authorization
    - Payment processing
@@ -49,7 +49,7 @@ The system consists of three main components:
 ### Prerequisites
 
 - Node.js v18 or higher
-- MongoDB
+- Postgress
 - Flutter SDK 3.0+
 - Chapa account for payments
 - Firebase project for FCM
@@ -160,7 +160,7 @@ See [Frontend README](./frontend/README.md) for detailed instructions.
 ### Backend
 - **Runtime**: Node.js
 - **Framework**: Express.js
-- **Database**: MongoDB + Mongoose
+- **Database**: Postgress
 - **Authentication**: JWT + bcryptjs
 - **Payment**: Chapa API
 - **Notifications**: Firebase FCM
@@ -236,7 +236,7 @@ flutter test
 
 ### Backend Deployment
 - Deploy to Heroku, AWS, DigitalOcean, or any Node.js host
-- Set up MongoDB Atlas for database
+- Set up Postgress for database
 - Configure environment variables
 - Set up Chapa webhook URL
 
