@@ -89,36 +89,6 @@ flutter run
 
 See [Frontend README](./frontend/README.md) for detailed instructions.
 
-#### Docker Setup (Optional)
-
-The project includes a Docker Compose configuration for easy deployment with PostgreSQL:
-
-```bash
-# Start all services (PostgreSQL + Backend)
-docker-compose up -d
-
-# View logs
-docker-compose logs -f backend
-
-# Access backend container
-docker exec -it campus_eats_backend sh
-
-# Run migrations (first time setup)
-docker exec -it campus_eats_backend npm run prisma:migrate
-
-# Stop services
-docker-compose down
-
-# Stop and remove volumes
-docker-compose down -v
-```
-
-The Docker setup includes:
-- PostgreSQL 15 database with health checks
-- Backend API with automatic restart
-- Persistent data volumes
-- Networked services
-
 ## 📱 User Roles
 
 ### 1. Users (Students/Staff/Teachers)
@@ -1208,21 +1178,7 @@ We welcome contributions! Please see [CONTRIBUTING.md](./CONTRIBUTING.md) for de
 
 This project is licensed under the MIT License - see [LICENSE](LICENSE) file for details.
 
-## 👥 Authors
 
-- Campus Eats Team
-
-## 🙏 Acknowledgments
-
-- Ethiopian Universities for the inspiration
-- Chapa for payment gateway support
-- Firebase for notification services
-
-## 📞 Contact
-
-- Email: support@campuseats.et
-- Website: https://campuseats.et
-- Telegram: @campuseats
 
 ## 🗺️ Roadmap
 
