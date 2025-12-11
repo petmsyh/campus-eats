@@ -145,17 +145,25 @@ const noSqlInjectionProtection = (req, res, next) => {
 
 /**
  * XSS Protection middleware
+ * Detects common XSS attack patterns in user input
+ * Note: This is a basic implementation. For production, consider using helmet and xss libraries
  */
 const xssProtection = (req, res, next) => {
-  const xssPatterns = [
-    /<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi,
-    /javascript:/gi,
-    /on\w+\s*=/gi,
-  ];
-
+  // Detect dangerous characters and patterns
   const checkForXss = (obj) => {
     if (typeof obj === 'string') {
-      return xssPatterns.some((pattern) => pattern.test(obj));
+      // Check for script tags, event handlers, and javascript: protocol
+      const dangerousPatterns = [
+        /<script[\s\S]*?>/i,        // Opening script tag with any attributes
+        /<\/script>/i,               // Closing script tag
+        /javascript\s*:/i,           // JavaScript protocol
+        /on\w+\s*=/i,                // Event handlers like onclick=
+        /<iframe/i,                  // iframes
+        /<object/i,                  // object tags
+        /<embed/i,                   // embed tags
+      ];
+      
+      return dangerousPatterns.some((pattern) => pattern.test(obj));
     }
     
     if (typeof obj === 'object' && obj !== null) {

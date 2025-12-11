@@ -222,6 +222,7 @@ const contractValidations = {
 
 /**
  * Sanitize output to prevent XSS
+ * Note: For production, consider using a battle-tested library like DOMPurify or xss
  */
 const sanitizeOutput = (obj) => {
   if (typeof obj !== 'object' || obj === null) {
@@ -235,11 +236,15 @@ const sanitizeOutput = (obj) => {
       const value = obj[key];
       
       if (typeof value === 'string') {
-        // Basic XSS protection - remove script tags and sanitize
+        // HTML entity encoding for XSS protection
+        // Convert dangerous characters to HTML entities
         sanitized[key] = value
-          .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
-          .replace(/javascript:/gi, '')
-          .replace(/on\w+\s*=/gi, '');
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;')
+          .replace(/'/g, '&#x27;')
+          .replace(/\//g, '&#x2F;');
       } else if (typeof value === 'object' && value !== null) {
         sanitized[key] = sanitizeOutput(value);
       } else {
