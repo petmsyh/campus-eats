@@ -7,6 +7,14 @@ const { connectDB } = require('./config/prisma');
 const logger = require('./utils/logger');
 const errorHandler = require('./middleware/errorHandler');
 const rateLimiter = require('./middleware/rateLimiter');
+const {
+  apiLimiter,
+  authLimiter,
+  requestSizeLimiter,
+  sqlInjectionProtection,
+  noSqlInjectionProtection,
+  xssProtection,
+} = require('./middleware/security');
 
 // Import routes
 const authRoutes = require('./routes/auth.routes');
@@ -25,18 +33,48 @@ const app = express();
 // Connect to Database
 connectDB();
 
-// Middleware
-app.use(helmet()); // Security headers
+// Security Middleware
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      styleSrc: ["'self'", "'unsafe-inline'"],
+      scriptSrc: ["'self'"],
+      imgSrc: ["'self'", 'data:', 'https:'],
+    },
+  },
+  hsts: {
+    maxAge: 31536000,
+    includeSubDomains: true,
+    preload: true,
+  },
+}));
+
 app.use(cors({
   origin: process.env.FRONTEND_URL || (process.env.NODE_ENV === 'development' ? 'http://localhost:3001' : false),
-  credentials: true
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
 }));
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
-app.use(morgan('combined', { stream: { write: message => logger.info(message.trim()) } }));
+
+// Request size limits
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+
+app.use(morgan('combined', { stream: { write: (message) => logger.info(message.trim()) } }));
+
+// Security middleware
+app.use(requestSizeLimiter);
+app.use(sqlInjectionProtection);
+app.use(noSqlInjectionProtection);
+app.use(xssProtection);
 
 // Rate limiting
-app.use('/api/', rateLimiter);
+app.use('/api/', apiLimiter);
+app.use('/api/v1/auth/login', authLimiter);
+app.use('/api/v1/auth/register', authLimiter);
+app.use('/api/v1/auth/verify-otp', authLimiter);
+app.use('/api/v1/auth/resend-otp', authLimiter);
 
 // Health check
 app.get('/health', (req, res) => {
